@@ -1,0 +1,79 @@
+version: '2'
+services:
+
+  gitlab:
+    image: 'gitlab/gitlab-ce:latest'
+    restart: always
+    hostname: 'git.example.com'
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'https://git.example.com'
+    ports:
+      - '22:22'
+    expose:
+      - '80'
+      - '443'
+    volumes:
+      - '/srv/docker/gitlab/config:/etc/gitlab'
+      - '/srv/docker/gitlab/logs:/var/log/gitlab'
+      - '/srv/docker/gitlab/data:/var/opt/gitlab'
+      - '/srv/docker/letsencrypt:/etc/letsencrypt:ro'
+
+  registry:
+    restart: always
+    image: registry:2
+    expose:
+      - 5000
+    environment:
+      REGISTRY_HTTP_TLS_CERTIFICATE: /etc/letsencrypt/live/registry.git.example.com/fullchain.pem
+      REGISTRY_HTTP_TLS_KEY: /etc/letsencrypt/live/registry.git.example.com/privkey.pem
+      REGISTRY_AUTH: htpasswd
+      REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
+      REGISTRY_AUTH_HTPASSWD_REALM: Registry Realm
+    volumes:
+      - /srv/docker/registry/data:/var/lib/registry
+      - /srv/docker/registry/certs:/certs
+      - /srv/docker/registry/auth:/auth
+      - /srv/docker/letsencrypt:/etc/letsencrypt:ro
+
+  sitebackend:
+    restart: always
+    image: registry.example.com/master/kuberstack-site-backend:latest
+    expose:
+      - 8000
+    environment:
+      MAIL_SERVER: 'mail.example.com'
+      MAIL_PORT: '587'
+      MAIL_USE_TLS: 'True'
+      MAIL_USERNAME: 'test_user'
+      MAIL_PASSWORD: '123456'
+      MAIL_DEFAULT_SENDER: 'no-reply@example.com
+      MAIL_RECIPIENTS: 'tech@example.com'
+    volumes:
+      - /srv/docker/letsencrypt:/etc/letsencrypt:ro
+
+  nginx:
+    image: 'nginx'
+    restart: always
+    hostname: 'git.example.com'
+    networks:
+      - zabbix_zbx_net
+      - default
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - '/srv/docker/nginx/conf.d:/etc/nginx/conf.d'
+      - '/srv/docker/nginx/ssl:/etc/nginx/ssl'
+      - '/srv/docker/letsencrypt:/etc/letsencrypt:ro'
+      - '/var/www/html:/var/www/html'
+    links:
+      - gitlab
+      - registry
+      - sitebackend
+    external_links:
+      - zabbix-web:zabbix_zabbix-web1
+
+networks:
+  zabbix_zbx_net:
+    external: true
